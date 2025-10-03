@@ -203,6 +203,11 @@ const Dashboard = () => {
                   <span className="log-stat">
                     👥 {log.clients_created} new clients
                   </span>
+                  {log.payments_synced > 0 && (
+                    <span className="log-stat">
+                      💰 {log.payments_synced} payments synced
+                    </span>
+                  )}
                 </div>
               )}
             </div>
