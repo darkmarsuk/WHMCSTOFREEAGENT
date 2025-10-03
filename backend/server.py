@@ -428,6 +428,9 @@ async def get_sync_logs(limit: int = 50):
     """Get sync logs"""
     try:
         logs = await db.sync_logs.find().sort('timestamp', -1).limit(limit).to_list(limit)
+        # Remove MongoDB _id field
+        for log in logs:
+            log.pop('_id', None)
         return logs
     except Exception as e:
         logger.error(f"Error getting sync logs: {str(e)}")
