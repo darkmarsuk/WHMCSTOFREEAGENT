@@ -188,3 +188,95 @@ class SyncService:
         except Exception as e:
             logger.error(f"Sync failed: {str(e)}")
             raise
+    
+    async def sync_payments_from_freeagent(self) -> Dict[str, Any]:
+        """Sync payments from FreeAgent back to WHMCS"""
+        result = {
+            'invoices_checked': 0,
+            'payments_synced': 0,
+            'errors': [],
+            'message': ''
+        }
+        
+        try:
+            logger.info("Fetching synced invoices for payment sync...")
+            
+            # Get all synced invoices from database
+            synced_invoices = await self.db.synced_invoices.find().to_list(1000)
+            
+            if not synced_invoices:
+                result['message'] = 'No synced invoices found'
+                return result
+            
+            logger.info(f"Checking {len(synced_invoices)} synced invoices for payments...")
+            
+            for synced in synced_invoices:
+                try:
+                    result['invoices_checked'] += 1
+                    whmcs_invoice_id = synced.get('whmcs_invoice_id')
+                    freeagent_invoice_url = synced.get('freeagent_invoice_url')
+                    
+                    # Skip if already marked as paid in our database
+                    if synced.get('payment_synced'):
+                        continue
+                    
+                    # Get FreeAgent invoice details
+                    fa_invoice = await self.freeagent.get_invoice(freeagent_invoice_url)
+                    
+                    # Check if invoice is paid in FreeAgent
+                    if fa_invoice.get('status') != 'Paid':
+                        continue
+                    
+                    # Get payment amount and date
+                    total_paid = Decimal(str(fa_invoice.get('total_value', 0)))
+                    dated_on = fa_invoice.get('dated_on')
+                    
+                    if total_paid <= 0:
+                        continue
+                    
+                    logger.info(f"Invoice {whmcs_invoice_id} is paid in FreeAgent, syncing payment to WHMCS...")
+                    
+                    # Add payment to WHMCS
+                    await self.whmcs.add_invoice_payment(
+                        invoice_id=whmcs_invoice_id,
+                        amount=float(total_paid),
+                        date=dated_on,
+                        transaction_id=f"FA-{whmcs_invoice_id}",
+                        gateway="FreeAgent Sync"
+                    )
+                    
+                    # Mark as synced in database
+                    await self.db.synced_invoices.update_one(
+                        {'whmcs_invoice_id': whmcs_invoice_id},
+                        {
+                            '$set': {
+                                'payment_synced': True,
+                                'payment_synced_at': datetime.now(timezone.utc),
+                                'payment_amount': float(total_paid)
+                            }
+                        }
+                    )
+                    
+                    result['payments_synced'] += 1
+                    logger.info(f"Payment synced for invoice {whmcs_invoice_id}")
+                    
+                except Exception as e:
+                    error_msg = f"Error syncing payment for invoice {synced.get('whmcs_invoice_id')}: {str(e)}"
+                    logger.error(error_msg)
+                    result['errors'].append(error_msg)
+                    continue
+            
+            # Build result message
+            if result['payments_synced'] > 0:
+                result['message'] = f"Synced {result['payments_synced']} payments from FreeAgent to WHMCS"
+            else:
+                result['message'] = f"Checked {result['invoices_checked']} invoices, no new payments to sync"
+            
+            if result['errors']:
+                result['message'] += f" (with {len(result['errors'])} errors)"
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Payment sync failed: {str(e)}")
+            raise
