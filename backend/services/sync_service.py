@@ -231,6 +231,12 @@ class SyncService:
                     total_paid = Decimal(str(fa_invoice.get('total_value', 0)))
                     dated_on = fa_invoice.get('dated_on')
                     
+                    # Format date for WHMCS (YYYY-MM-DD)
+                    if isinstance(dated_on, str):
+                        payment_date = dated_on  # Already in correct format
+                    else:
+                        payment_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+                    
                     if total_paid <= 0:
                         continue
                     
@@ -253,9 +259,9 @@ class SyncService:
                     await self.whmcs.add_invoice_payment(
                         invoice_id=whmcs_invoice_id,
                         amount=float(total_paid),
-                        date=dated_on,
+                        date=payment_date,
                         transaction_id=f"FA-{whmcs_invoice_id}",
-                        gateway="FreeAgent Sync"
+                        gateway="banktransfer"
                     )
                     
                     # Mark as synced in database
