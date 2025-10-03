@@ -248,6 +248,23 @@ class SyncService:
                         whmcs_invoice = await self.whmcs.get_invoice(whmcs_invoice_id)
                         current_status = whmcs_invoice.get('status', '')
                         
+                        # Skip if already paid in WHMCS
+                        if current_status in ['Paid', 'Cancelled', 'Refunded']:
+                            logger.info(f"Invoice {whmcs_invoice_id} is already {current_status} in WHMCS, skipping payment sync")
+                            # Mark as synced in database to prevent future checks
+                            await self.db.synced_invoices.update_one(
+                                {'whmcs_invoice_id': whmcs_invoice_id},
+                                {
+                                    '$set': {
+                                        'payment_synced': True,
+                                        'payment_synced_at': datetime.now(timezone.utc),
+                                        'payment_amount': float(total_paid),
+                                        'already_paid_in_whmcs': True
+                                    }
+                                }
+                            )
+                            continue
+                        
                         # If invoice is Draft, update to Unpaid first
                         if current_status == 'Draft':
                             logger.info(f"Invoice {whmcs_invoice_id} is Draft in WHMCS, updating to Unpaid...")
