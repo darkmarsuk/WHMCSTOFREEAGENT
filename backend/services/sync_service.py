@@ -220,7 +220,36 @@ class SyncService:
                     if synced.get('payment_synced'):
                         continue
                     
-                    # Get FreeAgent invoice details
+                    # First, check WHMCS invoice status BEFORE checking FreeAgent
+                    try:
+                        whmcs_invoice = await self.whmcs.get_invoice(whmcs_invoice_id)
+                        current_status = whmcs_invoice.get('status', '')
+                        
+                        # Skip if Draft - not ready for payments yet
+                        if current_status == 'Draft':
+                            logger.info(f"Invoice {whmcs_invoice_id} is Draft in WHMCS, skipping payment sync")
+                            continue
+                        
+                        # Skip if already paid, cancelled, or refunded in WHMCS
+                        if current_status in ['Paid', 'Cancelled', 'Refunded']:
+                            logger.info(f"Invoice {whmcs_invoice_id} is already {current_status} in WHMCS, skipping payment sync")
+                            # Mark as synced in database to prevent future checks
+                            await self.db.synced_invoices.update_one(
+                                {'whmcs_invoice_id': whmcs_invoice_id},
+                                {
+                                    '$set': {
+                                        'payment_synced': True,
+                                        'payment_synced_at': datetime.now(timezone.utc),
+                                        'already_paid_in_whmcs': True
+                                    }
+                                }
+                            )
+                            continue
+                    except Exception as e:
+                        logger.warning(f"Could not check WHMCS invoice status: {str(e)}")
+                        continue
+                    
+                    # Now check FreeAgent invoice for payment
                     fa_invoice = await self.freeagent.get_invoice(freeagent_invoice_url)
                     
                     # Check if invoice is paid in FreeAgent
@@ -241,36 +270,6 @@ class SyncService:
                         continue
                     
                     logger.info(f"Invoice {whmcs_invoice_id} is paid in FreeAgent, syncing payment to WHMCS...")
-                    
-                    # First, ensure the invoice is not in Draft status in WHMCS
-                    try:
-                        # Get current invoice status from WHMCS
-                        whmcs_invoice = await self.whmcs.get_invoice(whmcs_invoice_id)
-                        current_status = whmcs_invoice.get('status', '')
-                        
-                        # Skip if already paid in WHMCS
-                        if current_status in ['Paid', 'Cancelled', 'Refunded']:
-                            logger.info(f"Invoice {whmcs_invoice_id} is already {current_status} in WHMCS, skipping payment sync")
-                            # Mark as synced in database to prevent future checks
-                            await self.db.synced_invoices.update_one(
-                                {'whmcs_invoice_id': whmcs_invoice_id},
-                                {
-                                    '$set': {
-                                        'payment_synced': True,
-                                        'payment_synced_at': datetime.now(timezone.utc),
-                                        'payment_amount': float(total_paid),
-                                        'already_paid_in_whmcs': True
-                                    }
-                                }
-                            )
-                            continue
-                        
-                        # If invoice is Draft, update to Unpaid first
-                        if current_status == 'Draft':
-                            logger.info(f"Invoice {whmcs_invoice_id} is Draft in WHMCS, updating to Unpaid...")
-                            await self.whmcs.update_invoice_status(whmcs_invoice_id, 'Unpaid')
-                    except Exception as e:
-                        logger.warning(f"Could not check/update invoice status: {str(e)}")
                     
                     # Add payment to WHMCS
                     await self.whmcs.add_invoice_payment(
