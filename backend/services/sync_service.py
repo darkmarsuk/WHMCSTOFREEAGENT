@@ -148,6 +148,14 @@ class SyncService:
                     }
                     
                     freeagent_invoice = await self.freeagent.create_invoice(freeagent_invoice_data)
+                    
+                    # Mark invoice as sent (not draft)
+                    try:
+                        await self.freeagent.mark_invoice_as_sent(freeagent_invoice.get('url'))
+                        logger.info(f"Invoice {invoice_id} marked as sent in FreeAgent")
+                    except Exception as e:
+                        logger.warning(f"Could not mark invoice as sent: {str(e)}")
+                    
                     result['invoices_created'] += 1
                     
                     # Save sync record
