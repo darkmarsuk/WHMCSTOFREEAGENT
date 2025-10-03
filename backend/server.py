@@ -373,14 +373,24 @@ async def manual_sync(background_tasks: BackgroundTasks):
         
         sync_service = SyncService(whmcs_service, freeagent_service, db)
         
-        # Perform sync
+        # Perform invoice sync
         result = await sync_service.sync_invoices()
+        
+        # Perform payment sync from FreeAgent to WHMCS
+        try:
+            payment_result = await sync_service.sync_payments_from_freeagent()
+            result['payments_synced'] = payment_result.get('payments_synced', 0)
+            if payment_result.get('message'):
+                result['message'] += f" | {payment_result['message']}"
+        except Exception as e:
+            logger.warning(f"Payment sync failed during manual sync: {str(e)}")
         
         # Update sync log
         sync_log.status = 'success'
         sync_log.invoices_processed = result.get('invoices_processed', 0)
         sync_log.invoices_created = result.get('invoices_created', 0)
         sync_log.clients_created = result.get('clients_created', 0)
+        sync_log.payments_synced = result.get('payments_synced', 0)
         sync_log.message = result.get('message', 'Sync completed successfully')
         
         await db.sync_logs.update_one(
