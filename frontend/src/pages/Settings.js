@@ -87,6 +87,9 @@ const Settings = () => {
         message: "Credentials saved successfully!"
       });
       
+      // Refresh to get connection status
+      await fetchCredentials();
+      
     } catch (error) {
       console.error("Error saving credentials:", error);
       setAlert({
@@ -95,6 +98,55 @@ const Settings = () => {
       });
     } finally {
       setSaving(false);
+    }
+  };
+  
+  const handleConnectFreeAgent = async () => {
+    try {
+      setConnecting(true);
+      setAlert(null);
+      
+      const response = await axios.get(`${API}/oauth/freeagent/authorize`);
+      
+      // Redirect to FreeAgent authorization page
+      window.location.href = response.data.authorization_url;
+      
+    } catch (error) {
+      console.error("Error connecting to FreeAgent:", error);
+      setAlert({
+        type: "error",
+        message: error.response?.data?.detail || "Failed to initiate FreeAgent connection"
+      });
+      setConnecting(false);
+    }
+  };
+  
+  const handleDisconnectFreeAgent = async () => {
+    if (!window.confirm('Are you sure you want to disconnect from FreeAgent?')) {
+      return;
+    }
+    
+    try {
+      setDisconnecting(true);
+      setAlert(null);
+      
+      await axios.post(`${API}/oauth/freeagent/disconnect`);
+      
+      setAlert({
+        type: "success",
+        message: "Disconnected from FreeAgent successfully"
+      });
+      
+      setIsConnected(false);
+      
+    } catch (error) {
+      console.error("Error disconnecting:", error);
+      setAlert({
+        type: "error",
+        message: error.response?.data?.detail || "Failed to disconnect"
+      });
+    } finally {
+      setDisconnecting(false);
     }
   };
   
