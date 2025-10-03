@@ -24,7 +24,26 @@ const Settings = () => {
   
   useEffect(() => {
     fetchCredentials();
-  }, []);
+    
+    // Check for OAuth callback
+    const oauthStatus = searchParams.get('oauth');
+    if (oauthStatus === 'success') {
+      setAlert({
+        type: "success",
+        message: "Successfully connected to FreeAgent!"
+      });
+      // Remove query params
+      window.history.replaceState({}, '', '/settings');
+    } else if (oauthStatus === 'error') {
+      const errorMsg = searchParams.get('message') || 'Failed to connect to FreeAgent';
+      setAlert({
+        type: "error",
+        message: errorMsg
+      });
+      // Remove query params
+      window.history.replaceState({}, '', '/settings');
+    }
+  }, [searchParams]);
   
   const fetchCredentials = async () => {
     try {
@@ -37,6 +56,7 @@ const Settings = () => {
           freeagent_client_id: response.data.freeagent_client_id || "",
           freeagent_client_secret: "",
         });
+        setIsConnected(response.data.is_connected || false);
       }
       setLoading(false);
     } catch (error) {
