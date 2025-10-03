@@ -140,7 +140,7 @@ class SyncService:
                         'contact': freeagent_contact_url,
                         'dated_on': invoice_date,
                         'due_on': due_date,
-                        'reference': f"WHMCS-{detailed_invoice.get('invoicenum', invoice_id)}",
+                        'reference': f"wh-{invoice_id}",
                         'currency': detailed_invoice.get('currencycode', 'GBP'),
                         'payment_terms_in_days': 30,  # Default payment terms
                         'invoice_items': invoice_items,
