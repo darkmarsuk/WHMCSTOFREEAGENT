@@ -106,3 +106,22 @@ class WHMCSService:
         except Exception as e:
             logger.error(f"Error getting client {client_id}: {str(e)}")
             raise
+    
+    async def add_invoice_payment(self, invoice_id: int, amount: float, date: str, transaction_id: str = None, gateway: str = "banktransfer") -> Dict[str, Any]:
+        """Add payment to WHMCS invoice"""
+        try:
+            params = {
+                'invoiceid': invoice_id,
+                'transid': transaction_id or f"FA-{invoice_id}",
+                'gateway': gateway,
+                'date': date,
+                'amount': amount
+            }
+            
+            response = self._make_request('AddInvoicePayment', **params)
+            logger.info(f"Added payment to invoice {invoice_id}: {amount}")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error adding payment to invoice {invoice_id}: {str(e)}")
+            raise
