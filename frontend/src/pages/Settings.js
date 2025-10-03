@@ -1,0 +1,247 @@
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
+
+const Settings = () => {
+  const [credentials, setCredentials] = useState({
+    whmcs_url: "",
+    whmcs_identifier: "",
+    whmcs_secret: "",
+    freeagent_client_id: "",
+    freeagent_client_secret: "",
+  });
+  
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [alert, setAlert] = useState(null);
+  
+  useEffect(() => {
+    fetchCredentials();
+  }, []);
+  
+  const fetchCredentials = async () => {
+    try {
+      const response = await axios.get(`${API}/settings/credentials`);
+      if (response.data) {
+        setCredentials({
+          whmcs_url: response.data.whmcs_url || "",
+          whmcs_identifier: "",
+          whmcs_secret: "",
+          freeagent_client_id: response.data.freeagent_client_id || "",
+          freeagent_client_secret: "",
+        });
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching credentials:", error);
+      setLoading(false);
+    }
+  };
+  
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setCredentials(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      setSaving(true);
+      setAlert(null);
+      
+      await axios.post(`${API}/settings/credentials`, credentials);
+      
+      setAlert({
+        type: "success",
+        message: "Credentials saved successfully!"
+      });
+      
+    } catch (error) {
+      console.error("Error saving credentials:", error);
+      setAlert({
+        type: "error",
+        message: error.response?.data?.detail || "Failed to save credentials"
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  if (loading) {
+    return (
+      <div className="page-container">
+        <div className="page-header">
+          <h1 className="page-title">Settings</h1>
+          <p className="page-subtitle">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <h1 className="page-title">Settings</h1>
+        <p className="page-subtitle">Configure your WHMCS and FreeAgent API credentials</p>
+      </div>
+      
+      {alert && (
+        <div className={`alert alert-${alert.type}`}>
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          <div>{alert.message}</div>
+        </div>
+      )}
+      
+      <div className="card">
+        <h2 className="card-title">WHMCS Credentials</h2>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">WHMCS URL</label>
+            <input
+              type="url"
+              name="whmcs_url"
+              className="form-input"
+              placeholder="https://your-domain.com/whmcs"
+              value={credentials.whmcs_url}
+              onChange={handleChange}
+              required
+              data-testid="whmcs-url-input"
+            />
+            <p style={{fontSize: '0.875rem', color: '#64748b', marginTop: '0.5rem'}}>
+              Your WHMCS installation URL
+            </p>
+          </div>
+          
+          <div className="form-group">
+            <label className="form-label">API Identifier</label>
+            <input
+              type="text"
+              name="whmcs_identifier"
+              className="form-input"
+              placeholder="Enter your WHMCS API Identifier"
+              value={credentials.whmcs_identifier}
+              onChange={handleChange}
+              required
+              data-testid="whmcs-identifier-input"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label className="form-label">API Secret</label>
+            <input
+              type="password"
+              name="whmcs_secret"
+              className="form-input"
+              placeholder="Enter your WHMCS API Secret"
+              value={credentials.whmcs_secret}
+              onChange={handleChange}
+              required
+              data-testid="whmcs-secret-input"
+            />
+          </div>
+          
+          <hr style={{margin: '2rem 0', border: 'none', borderTop: '1px solid #e2e8f0'}} />
+          
+          <h2 className="card-title">FreeAgent Credentials</h2>
+          
+          <div className="form-group">
+            <label className="form-label">OAuth Client ID</label>
+            <input
+              type="text"
+              name="freeagent_client_id"
+              className="form-input"
+              placeholder="1KPjokVRmomFNRVgQgqgEw"
+              value={credentials.freeagent_client_id}
+              onChange={handleChange}
+              required
+              data-testid="freeagent-client-id-input"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label className="form-label">OAuth Client Secret</label>
+            <input
+              type="password"
+              name="freeagent_client_secret"
+              className="form-input"
+              placeholder="wzFQffiI6AkmY3zf9bHhJA"
+              value={credentials.freeagent_client_secret}
+              onChange={handleChange}
+              required
+              data-testid="freeagent-client-secret-input"
+            />
+          </div>
+          
+          <div className={`alert alert-info`} style={{marginTop: '1.5rem'}}>
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <strong>Note:</strong> For FreeAgent OAuth, you'll need to complete the OAuth flow to get access tokens. 
+              Currently, you can use your Client ID and Secret. Future updates will include full OAuth flow support.
+            </div>
+          </div>
+          
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={saving}
+            style={{marginTop: '2rem'}}
+            data-testid="save-credentials-btn"
+          >
+            {saving ? (
+              <>
+                <span className="spinner"></span>
+                Saving...
+              </>
+            ) : (
+              <>
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Save Credentials
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+      
+      <div className="card">
+        <h2 className="card-title">How to Get API Credentials</h2>
+        
+        <div style={{color: '#475569', lineHeight: '1.7'}}>
+          <h3 style={{fontSize: '1.1rem', fontWeight: '600', marginTop: '1.5rem', marginBottom: '0.75rem'}}>
+            WHMCS API Credentials
+          </h3>
+          <ol style={{paddingLeft: '1.5rem'}}>
+            <li style={{marginBottom: '0.5rem'}}>Log in to your WHMCS admin area</li>
+            <li style={{marginBottom: '0.5rem'}}>Go to Setup → Staff Management → Manage API Credentials</li>
+            <li style={{marginBottom: '0.5rem'}}>Click "Generate New API Credential"</li>
+            <li style={{marginBottom: '0.5rem'}}>Copy the Identifier and Secret</li>
+          </ol>
+          
+          <h3 style={{fontSize: '1.1rem', fontWeight: '600', marginTop: '1.5rem', marginBottom: '0.75rem'}}>
+            FreeAgent OAuth Credentials
+          </h3>
+          <ol style={{paddingLeft: '1.5rem'}}>
+            <li style={{marginBottom: '0.5rem'}}>Log in to your FreeAgent account</li>
+            <li style={{marginBottom: '0.5rem'}}>Go to Settings → Developer → OAuth Applications</li>
+            <li style={{marginBottom: '0.5rem'}}>Create a new OAuth application</li>
+            <li style={{marginBottom: '0.5rem'}}>Copy the Client ID and Client Secret</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Settings;
