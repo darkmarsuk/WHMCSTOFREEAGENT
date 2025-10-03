@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { useSearchParams } from "react-router-dom";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const Settings = () => {
+  const [searchParams] = useSearchParams();
   const [credentials, setCredentials] = useState({
     whmcs_url: "",
     whmcs_identifier: "",
@@ -15,6 +17,9 @@ const Settings = () => {
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   const [alert, setAlert] = useState(null);
   
   useEffect(() => {
