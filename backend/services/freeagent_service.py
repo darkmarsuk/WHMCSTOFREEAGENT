@@ -99,6 +99,27 @@ class FreeAgentService:
             logger.error(f"Error creating invoice: {str(e)}")
             raise
     
+    async def mark_invoice_as_sent(self, invoice_url: str) -> Dict[str, Any]:
+        """Mark invoice as sent in FreeAgent"""
+        try:
+            # Extract endpoint from full URL
+            endpoint = invoice_url.replace(self.base_url, '')
+            
+            # Mark as sent by updating status
+            payload = {
+                'invoice': {
+                    'status': 'Sent'
+                }
+            }
+            
+            response = self._make_request('PUT', f"{endpoint}/transitions/mark_as_sent", json=payload)
+            logger.info(f"Marked invoice as sent: {invoice_url}")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error marking invoice as sent: {str(e)}")
+            raise
+    
     async def get_invoice(self, invoice_url: str) -> Dict[str, Any]:
         """Get invoice details"""
         try:
