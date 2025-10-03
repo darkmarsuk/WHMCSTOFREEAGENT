@@ -125,3 +125,19 @@ class WHMCSService:
         except Exception as e:
             logger.error(f"Error adding payment to invoice {invoice_id}: {str(e)}")
             raise
+    
+    async def update_invoice_status(self, invoice_id: int, status: str) -> Dict[str, Any]:
+        """Update WHMCS invoice status (e.g., from Draft to Unpaid)"""
+        try:
+            params = {
+                'invoiceid': invoice_id,
+                'status': status
+            }
+            
+            response = self._make_request('UpdateInvoice', **params)
+            logger.info(f"Updated invoice {invoice_id} status to {status}")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error updating invoice {invoice_id} status: {str(e)}")
+            raise
