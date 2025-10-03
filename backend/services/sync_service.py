@@ -236,6 +236,19 @@ class SyncService:
                     
                     logger.info(f"Invoice {whmcs_invoice_id} is paid in FreeAgent, syncing payment to WHMCS...")
                     
+                    # First, ensure the invoice is not in Draft status in WHMCS
+                    try:
+                        # Get current invoice status from WHMCS
+                        whmcs_invoice = await self.whmcs.get_invoice(whmcs_invoice_id)
+                        current_status = whmcs_invoice.get('status', '')
+                        
+                        # If invoice is Draft, update to Unpaid first
+                        if current_status == 'Draft':
+                            logger.info(f"Invoice {whmcs_invoice_id} is Draft in WHMCS, updating to Unpaid...")
+                            await self.whmcs.update_invoice_status(whmcs_invoice_id, 'Unpaid')
+                    except Exception as e:
+                        logger.warning(f"Could not check/update invoice status: {str(e)}")
+                    
                     # Add payment to WHMCS
                     await self.whmcs.add_invoice_payment(
                         invoice_id=whmcs_invoice_id,
