@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, Query
+from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -16,6 +17,7 @@ from apscheduler.triggers.cron import CronTrigger
 from services.whmcs_service import WHMCSService
 from services.freeagent_service import FreeAgentService
 from services.sync_service import SyncService
+from services.freeagent_oauth import FreeAgentOAuth
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -41,6 +43,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# OAuth state storage (in production, use Redis or database)
+oauth_states = {}
+
 
 # Define Models
 class Credentials(BaseModel):
@@ -51,6 +56,7 @@ class Credentials(BaseModel):
     freeagent_client_secret: Optional[str] = None
     freeagent_access_token: Optional[str] = None
     freeagent_refresh_token: Optional[str] = None
+    freeagent_token_expires_at: Optional[datetime] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -88,6 +94,11 @@ async def perform_sync():
     creds = await db.credentials.find_one({})
     if not creds:
         logger.error("No credentials found for automatic sync")
+        return
+    
+    # Check if we have FreeAgent tokens
+    if not creds.get('freeagent_access_token'):
+        logger.error("No FreeAgent access token found")
         return
     
     # Create sync log
@@ -182,12 +193,130 @@ async def get_credentials():
             'freeagent_client_id': creds.get('freeagent_client_id'),
             'freeagent_client_secret': '***' if creds.get('freeagent_client_secret') else None,
             'has_access_token': bool(creds.get('freeagent_access_token')),
+            'is_connected': bool(creds.get('freeagent_access_token')),
             'updated_at': creds.get('updated_at')
         }
         
         return masked_creds
     except Exception as e:
         logger.error(f"Error getting credentials: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/oauth/freeagent/authorize")
+async def freeagent_authorize():
+    """Initiate FreeAgent OAuth flow"""
+    try:
+        # Get credentials
+        creds = await db.credentials.find_one({})
+        if not creds or not creds.get('freeagent_client_id'):
+            raise HTTPException(status_code=400, detail="FreeAgent credentials not configured")
+        
+        # Get the frontend URL from environment
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+        redirect_uri = f"{os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001')}/api/oauth/freeagent/callback"
+        
+        # Create OAuth service
+        oauth = FreeAgentOAuth(
+            client_id=creds.get('freeagent_client_id'),
+            client_secret=creds.get('freeagent_client_secret'),
+            redirect_uri=redirect_uri
+        )
+        
+        # Generate state for CSRF protection
+        state = str(uuid.uuid4())
+        oauth_states[state] = {'timestamp': datetime.now(timezone.utc)}
+        
+        # Get authorization URL
+        auth_url = oauth.get_authorization_url(state=state)
+        
+        logger.info(f"Redirecting to FreeAgent authorization: {auth_url}")
+        return {"authorization_url": auth_url}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OAuth authorization failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/oauth/freeagent/callback")
+async def freeagent_callback(code: str = Query(...), state: str = Query(None)):
+    """Handle FreeAgent OAuth callback"""
+    try:
+        # Verify state
+        if state and state not in oauth_states:
+            raise HTTPException(status_code=400, detail="Invalid state parameter")
+        
+        # Remove used state
+        if state:
+            oauth_states.pop(state, None)
+        
+        # Get credentials
+        creds = await db.credentials.find_one({})
+        if not creds:
+            raise HTTPException(status_code=400, detail="Credentials not found")
+        
+        redirect_uri = f"{os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001')}/api/oauth/freeagent/callback"
+        
+        # Create OAuth service
+        oauth = FreeAgentOAuth(
+            client_id=creds.get('freeagent_client_id'),
+            client_secret=creds.get('freeagent_client_secret'),
+            redirect_uri=redirect_uri
+        )
+        
+        # Exchange code for tokens
+        token_data = await oauth.exchange_code_for_token(code)
+        
+        # Store tokens
+        await db.credentials.update_one(
+            {},
+            {
+                '$set': {
+                    'freeagent_access_token': token_data.get('access_token'),
+                    'freeagent_refresh_token': token_data.get('refresh_token'),
+                    'freeagent_token_expires_at': datetime.now(timezone.utc),
+                    'updated_at': datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        logger.info("FreeAgent OAuth successful, tokens stored")
+        
+        # Redirect to frontend settings page
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+        return RedirectResponse(url=f"{frontend_url}/settings?oauth=success")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OAuth callback failed: {str(e)}")
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+        return RedirectResponse(url=f"{frontend_url}/settings?oauth=error&message={str(e)}")
+
+
+@api_router.post("/oauth/freeagent/disconnect")
+async def freeagent_disconnect():
+    """Disconnect FreeAgent (remove tokens)"""
+    try:
+        await db.credentials.update_one(
+            {},
+            {
+                '$set': {
+                    'freeagent_access_token': None,
+                    'freeagent_refresh_token': None,
+                    'freeagent_token_expires_at': None,
+                    'updated_at': datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        logger.info("FreeAgent disconnected")
+        return {"status": "success", "message": "FreeAgent disconnected successfully"}
+        
+    except Exception as e:
+        logger.error(f"Disconnect failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -199,6 +328,10 @@ async def manual_sync(background_tasks: BackgroundTasks):
         creds = await db.credentials.find_one({})
         if not creds:
             raise HTTPException(status_code=400, detail="No credentials configured. Please configure credentials first.")
+        
+        # Check if we have FreeAgent tokens
+        if not creds.get('freeagent_access_token'):
+            raise HTTPException(status_code=400, detail="FreeAgent not connected. Please connect to FreeAgent first.")
         
         # Check if sync is already running
         running_sync = await db.sync_logs.find_one({'status': 'running'})
