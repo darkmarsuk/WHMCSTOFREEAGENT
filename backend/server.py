@@ -68,6 +68,7 @@ class SyncLog(BaseModel):
     invoices_processed: int = 0
     invoices_created: int = 0
     clients_created: int = 0
+    payments_synced: int = 0
     errors: List[str] = []
     message: Optional[str] = None
 
